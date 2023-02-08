@@ -1,5 +1,6 @@
 [package]
 name = "spoa-sys"
+description = "Low-level bindings to the spoa C++ library."
 version = "0.1.0"
 edition = "2021"
 license = "MIT"

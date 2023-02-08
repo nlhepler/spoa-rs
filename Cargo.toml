@@ -1,6 +1,6 @@
 [package]
 name = "spoa"
-description = "A rust wrapper around the spoa C++ library"
+description = "A rust wrapper around the spoa C++ SIMD partial order alignment library."
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
