@@ -1,0 +1,18 @@
+[package]
+name = "spoa"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[features]
+default = []
+simde = ["spoa-sys/simde"]
+
+[workspace]
+
+[dependencies]
+cxx = "1.0"
+spoa-sys = { version = "0.1.0", path = "spoa-sys" }
+
+[dev-dependencies]
+flate2 = "1.0"

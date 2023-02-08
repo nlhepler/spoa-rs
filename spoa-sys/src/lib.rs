@@ -1,0 +1,53 @@
+#[cxx::bridge(namespace = "spoa")]
+pub mod ffi {
+    #[repr(u32)]
+    enum AlignmentType {
+        kSW,
+        kNW,
+        kOV,
+    }
+
+    unsafe extern "C++" {
+        include!("spoa-sys/include/bindings.hpp");
+
+        type Alignment;
+        type AlignmentEngine;
+        type AlignmentType;
+        type Graph;
+
+        fn create_graph() -> UniquePtr<Graph>;
+        /// # Safety
+        /// this function is unsafe because cxx says pointer arguments are unsafe
+        unsafe fn add_alignment(
+            graph: Pin<&mut Graph>,
+            alignment: &Alignment,
+            sequence: *const c_char,
+            sequence_len: u32,
+            quality: *const c_char,
+            quality_len: u32,
+        );
+        fn generate_consensus(graph: Pin<&mut Graph>) -> UniquePtr<CxxString>;
+        fn generate_multiple_sequence_alignment(
+            graph: Pin<&mut Graph>,
+            include_consensus: bool,
+        ) -> UniquePtr<CxxVector<CxxString>>;
+
+        fn create_alignment_engine(
+            typ: AlignmentType,
+            m: i8,
+            n: i8,
+            g: i8,
+            e: i8,
+            q: i8,
+            c: i8,
+        ) -> UniquePtr<AlignmentEngine>;
+        /// # Safety
+        /// this function is unsafe because cxx says pointer arguments are unsafe
+        unsafe fn align(
+            alignment_engine: Pin<&mut AlignmentEngine>,
+            sequence: *const c_char,
+            sequence_len: u32,
+            graph: &Graph,
+        ) -> UniquePtr<Alignment>;
+    }
+}
