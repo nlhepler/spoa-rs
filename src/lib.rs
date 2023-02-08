@@ -3,15 +3,21 @@ use std::ffi::{CStr, CString};
 
 pub use ffi::AlignmentType;
 
+/// An opaque struct containing an alignment of a sequence to a `Graph`
 pub struct Alignment(cxx::UniquePtr<ffi::Alignment>);
 
+/// An opaque struct for aligning sequences to a `Graph`
 pub struct AlignmentEngine(cxx::UniquePtr<ffi::AlignmentEngine>);
 
 impl AlignmentEngine {
+    /// Construct a new `AlignmentEngine`, given an `AlignmentType`, a match score (`m`), a
+    /// mismatch score (`n`), a gap open score (`g`), a gap extension score (`e`), a second gap
+    /// open score (`q`), and a second gap extension score (`c`).
     pub fn new(typ: AlignmentType, m: i8, n: i8, g: i8, e: i8, q: i8, c: i8) -> Self {
         AlignmentEngine(ffi::create_alignment_engine(typ, m, n, g, e, q, c))
     }
 
+    /// Align a `sequence` to a `graph`, returning an `Alignment`
     pub fn align(&mut self, sequence: &CStr, graph: &Graph) -> Alignment {
         let sequence_len = u32::try_from(sequence.to_bytes().len()).unwrap();
         Alignment(unsafe {
@@ -25,13 +31,19 @@ impl AlignmentEngine {
     }
 }
 
+/// An opaque struct for the partial order alignment graph
 pub struct Graph(cxx::UniquePtr<ffi::Graph>);
 
 impl Graph {
+    /// Construct a new, empty `Graph`.
     pub fn new() -> Self {
         Graph(ffi::create_graph())
     }
 
+    /// Add an `Alignment` to a `Graph`, along with its `sequence` and per-base `quality` scores.
+    ///
+    /// The `alignment` should be derived from calling `AlignmentEngine::align` with the
+    /// `sequence`.
     pub fn add_alignment(&mut self, alignment: &Alignment, sequence: &CStr, quality: &CStr) {
         let sequence_len = u32::try_from(sequence.to_bytes().len()).unwrap();
         let quality_len = u32::try_from(quality.to_bytes().len()).unwrap();
@@ -48,6 +60,7 @@ impl Graph {
         }
     }
 
+    /// Generate a consenus sequence from the partial order `Graph`.
     pub fn consensus(&mut self) -> CString {
         let mut buf = Vec::from(
             ffi::generate_consensus(self.0.pin_mut())
@@ -59,6 +72,10 @@ impl Graph {
         CString::from_vec_with_nul(buf).unwrap()
     }
 
+    /// Generate a multiple sequence alignment for all sequences added to the `Graph`.
+    ///
+    /// If `include_consensus` is provided, the consensus sequence is provided, also aligned, at
+    /// the end.
     pub fn multiple_sequence_alignment(&mut self, include_consensus: bool) -> Vec<CString> {
         let msa = ffi::generate_multiple_sequence_alignment(self.0.pin_mut(), include_consensus);
         let mut result = vec![];

@@ -1,9 +1,13 @@
 #[cxx::bridge(namespace = "spoa")]
 pub mod ffi {
+    /// Enumerates the possible alignment types
     #[repr(u32)]
     enum AlignmentType {
+        /// Smith-Waterman alignment
         kSW,
+        /// Needleman-Wunsch alignment
         kNW,
+        /// Overlap alignment
         kOV,
     }
 
