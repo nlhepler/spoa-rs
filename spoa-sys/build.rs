@@ -14,9 +14,11 @@ fn main() {
         .define("spoa_build_tests", "OFF")
         .define("spoa_optimize_for_native", "OFF")
         .define("spoa_use_simde", use_simde)
-        .build()
-        .join("lib");
-    println!("cargo:rustc-link-search=native={}", dst.display());
+        .build();
+    let lib64 = dst.join("lib64");
+    let lib = dst.join("lib");
+    println!("cargo:rustc-link-search=native={}", lib64.display());
+    println!("cargo:rustc-link-search=native={}", lib.display());
     println!("cargo:rustc-link-lib=static=spoa");
 
     println!("cargo:rerun-if-changed=spoa/CMakeLists.txt");
