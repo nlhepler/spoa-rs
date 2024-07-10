@@ -1,5 +1,5 @@
 use spoa_sys::ffi;
-use std::ffi::{CStr, CString};
+use std::ffi::{c_char, CStr, CString};
 
 pub use ffi::AlignmentType;
 
@@ -24,6 +24,23 @@ impl AlignmentEngine {
             ffi::align(
                 self.0.pin_mut(),
                 sequence.as_ptr(),
+                sequence_len,
+                graph.0.as_ref().unwrap(),
+            )
+        })
+    }
+
+    /// Align a `sequence` to a `graph`, returning an `Alignment`, from a byte slice
+    /// of sequence and quality lengths.
+    pub fn align_from_bytes(&mut self, sequence: &[u8], graph: &Graph) -> Alignment {
+        let sequence_len: u32 = sequence
+            .len()
+            .try_into()
+            .expect("Sequence length does not fit into a u32");
+        Alignment(unsafe {
+            ffi::align(
+                self.0.pin_mut(),
+                sequence.as_ptr() as *const c_char,
                 sequence_len,
                 graph.0.as_ref().unwrap(),
             )
@@ -55,6 +72,40 @@ impl Graph {
                 sequence.as_ptr(),
                 sequence_len,
                 quality.as_ptr(),
+                quality_len,
+            )
+        }
+    }
+
+    /// Add an `Alignment` to a `Graph`, along with its `sequence` and per-base `quality` scores, from a byte slice of
+    /// sequence and quality lengths.
+    ///
+    /// The `alignment` should be derived from calling `AlignmentEngine::align` with the
+    /// `sequence`.
+    pub fn add_alignment_from_bytes(
+        &mut self,
+        alignment: &Alignment,
+        sequence: &[u8],
+        quality: &[u8],
+    ) {
+        let sequence_len = sequence
+            .len()
+            .try_into()
+            .expect("Sequence length does not fit into a u32");
+        let quality_len = quality
+            .len()
+            .try_into()
+            .expect("Quality length does not fit into a u32");
+
+        assert!(sequence_len == quality_len);
+
+        unsafe {
+            ffi::add_alignment(
+                self.0.pin_mut(),
+                alignment.0.as_ref().unwrap(),
+                sequence.as_ptr() as *const c_char,
+                sequence_len,
+                quality.as_ptr() as *const c_char,
                 quality_len,
             )
         }
@@ -113,6 +164,16 @@ mod tests {
         ]
     };
 
+    // same sequences as SMALL_SEQS, just as a &[u8] byte slice
+    const SMALL_SEQS_BYTES: &[&[u8]] = &[
+        "ATTGCCCGTT".as_bytes(),
+        "AATGCCGTT".as_bytes(),
+        "AATGCCCGAT".as_bytes(),
+        "AACGCCCGTC".as_bytes(),
+        "AGTGCTCGTT".as_bytes(),
+        "AATGCTCGTT".as_bytes(),
+    ];
+
     #[test]
     fn consensus_small() {
         let mut eng = AlignmentEngine::new(AlignmentType::kNW, 5, -4, -3, -1, -3, -1);
@@ -126,6 +187,22 @@ mod tests {
             };
             let aln = eng.align(seq, &graph);
             graph.add_alignment(&aln, seq, &qual);
+        }
+
+        let consensus = graph.consensus();
+        assert!(consensus.as_bytes() == b"AATGCCCGTT");
+    }
+
+    #[test]
+    fn consensus_small_bytes() {
+        let mut eng = AlignmentEngine::new(AlignmentType::kNW, 5, -4, -3, -1, -3, -1);
+        let mut graph = Graph::new();
+
+        for seq in SMALL_SEQS_BYTES {
+            let qual = vec![34u8; seq.len()];
+
+            let aln = eng.align_from_bytes(seq, &graph);
+            graph.add_alignment_from_bytes(&aln, seq, &qual);
         }
 
         let consensus = graph.consensus();
@@ -154,6 +231,30 @@ mod tests {
     }
 
     #[test]
+    fn consensus_spoa_bytes() {
+        // test borrowed from spoa itself, obviously
+        let file = std::fs::File::open("spoa-sys/spoa/test/data/sample.fastq.gz").unwrap();
+        let gz = flate2::read::GzDecoder::new(file);
+        let reader = fastq::FastqReader::new(std::io::BufReader::new(gz));
+
+        let mut eng = AlignmentEngine::new(AlignmentType::kSW, 5, -4, -8, -6, -8, -6);
+        let mut graph = Graph::new();
+
+        for record in reader {
+            let record = record.unwrap();
+
+            // fastq::FastqRecord uses CString types - we can
+            // convert this to a byte array.
+            let aln = eng.align_from_bytes(record.seq.as_bytes(), &graph);
+            graph.add_alignment_from_bytes(&aln, record.seq.as_bytes(), record.qual.as_bytes());
+        }
+
+        let consensus = graph.consensus();
+        let expected = b"AATGATGCGCTTTGTTGGCGCGGTGGCTTGATGCAGGGGCTAATCGACCTCTGGCAACCACTTTTCCATGACAGGAGTTGAATATGGCATTCAGTAATCCCTTCGATGATCCGCAGGGAGCGTTTTACATATTGCGCAATGCGCAGGGGCAATTCAGTCTGTGGCCGCAACAATGCGTCTTACCGGCAGGCTGGGACATTGTGTGTCAGCCGCAGTCACAGGCGTCCTGCCAGCAGTGGCTGGAAGCCCACTGGCGTACTCTGACACCGACGAATTTTACCCAGTTGCAGGAGGCACAATGAGCCAGCATTTACCTTTGGTCGCCGCACAGCCCGGCATCTGGATGGCAGAAAAACTGTCAGAATTACCCTCCGCCTGGAGCGTGGCGCATTACGTTGAGTTAACCGGAGAGGTTGATTCGCCATTACTGGCCCGCGCGGTGGTTGCCGGACTAGCGCAAGCAGATACGCTTTACACGCGCAACCAAGGATTTCGG";
+        assert!(consensus.as_bytes() == expected);
+    }
+
+    #[test]
     fn msa_small() {
         let mut eng = AlignmentEngine::new(AlignmentType::kNW, 5, -4, -3, -1, -3, -1);
         let mut graph = Graph::new();
@@ -166,6 +267,29 @@ mod tests {
             };
             let aln = eng.align(seq, &graph);
             graph.add_alignment(&aln, seq, &qual);
+        }
+
+        let msa = graph.multiple_sequence_alignment(true);
+        assert!(msa.len() == 7);
+        assert!(msa[0].as_bytes() == b"ATTGCC-CGTT");
+        assert!(msa[1].as_bytes() == b"AATG-C-CGTT");
+        assert!(msa[2].as_bytes() == b"AATGCC-CGAT");
+        assert!(msa[3].as_bytes() == b"AACGCC-CGTC");
+        assert!(msa[4].as_bytes() == b"AGTG-CTCGTT");
+        assert!(msa[5].as_bytes() == b"AATG-CTCGTT");
+        assert!(msa[6].as_bytes() == b"AATGCC-CGTT");
+    }
+
+    #[test]
+    fn msa_small_bytes() {
+        let mut eng = AlignmentEngine::new(AlignmentType::kNW, 5, -4, -3, -1, -3, -1);
+        let mut graph = Graph::new();
+
+        for seq in SMALL_SEQS_BYTES {
+            let qual = vec![34u8; seq.len()];
+
+            let aln = eng.align_from_bytes(seq, &graph);
+            graph.add_alignment_from_bytes(&aln, seq, &qual);
         }
 
         let msa = graph.multiple_sequence_alignment(true);
