@@ -164,6 +164,16 @@ mod tests {
         ]
     };
 
+    // same sequences as SMALL_SEQS, just as a &[u8] byte slice
+    const SMALL_SEQS_BYTES: &[&[u8]] = &[
+        "ATTGCCCGTT".as_bytes(),
+        "AATGCCGTT".as_bytes(),
+        "AATGCCCGAT".as_bytes(),
+        "AACGCCCGTC".as_bytes(),
+        "AGTGCTCGTT".as_bytes(),
+        "AATGCTCGTT".as_bytes(),
+    ];
+
     #[test]
     fn consensus_small() {
         let mut eng = AlignmentEngine::new(AlignmentType::kNW, 5, -4, -3, -1, -3, -1);
@@ -177,6 +187,22 @@ mod tests {
             };
             let aln = eng.align(seq, &graph);
             graph.add_alignment(&aln, seq, &qual);
+        }
+
+        let consensus = graph.consensus();
+        assert!(consensus.as_bytes() == b"AATGCCCGTT");
+    }
+
+    #[test]
+    fn consensus_small_bytes() {
+        let mut eng = AlignmentEngine::new(AlignmentType::kNW, 5, -4, -3, -1, -3, -1);
+        let mut graph = Graph::new();
+
+        for seq in SMALL_SEQS_BYTES {
+            let qual = vec![34u8; seq.len()];
+
+            let aln = eng.align_from_bytes(seq, &graph);
+            graph.add_alignment_from_bytes(&aln, seq, &qual);
         }
 
         let consensus = graph.consensus();
@@ -205,6 +231,30 @@ mod tests {
     }
 
     #[test]
+    fn consensus_spoa_bytes() {
+        // test borrowed from spoa itself, obviously
+        let file = std::fs::File::open("spoa-sys/spoa/test/data/sample.fastq.gz").unwrap();
+        let gz = flate2::read::GzDecoder::new(file);
+        let reader = fastq::FastqReader::new(std::io::BufReader::new(gz));
+
+        let mut eng = AlignmentEngine::new(AlignmentType::kSW, 5, -4, -8, -6, -8, -6);
+        let mut graph = Graph::new();
+
+        for record in reader {
+            let record = record.unwrap();
+
+            // fastq::FastqRecord uses CString types - we can
+            // convert this to a byte array.
+            let aln = eng.align_from_bytes(record.seq.as_bytes(), &graph);
+            graph.add_alignment_from_bytes(&aln, record.seq.as_bytes(), record.qual.as_bytes());
+        }
+
+        let consensus = graph.consensus();
+        let expected = b"AATGATGCGCTTTGTTGGCGCGGTGGCTTGATGCAGGGGCTAATCGACCTCTGGCAACCACTTTTCCATGACAGGAGTTGAATATGGCATTCAGTAATCCCTTCGATGATCCGCAGGGAGCGTTTTACATATTGCGCAATGCGCAGGGGCAATTCAGTCTGTGGCCGCAACAATGCGTCTTACCGGCAGGCTGGGACATTGTGTGTCAGCCGCAGTCACAGGCGTCCTGCCAGCAGTGGCTGGAAGCCCACTGGCGTACTCTGACACCGACGAATTTTACCCAGTTGCAGGAGGCACAATGAGCCAGCATTTACCTTTGGTCGCCGCACAGCCCGGCATCTGGATGGCAGAAAAACTGTCAGAATTACCCTCCGCCTGGAGCGTGGCGCATTACGTTGAGTTAACCGGAGAGGTTGATTCGCCATTACTGGCCCGCGCGGTGGTTGCCGGACTAGCGCAAGCAGATACGCTTTACACGCGCAACCAAGGATTTCGG";
+        assert!(consensus.as_bytes() == expected);
+    }
+
+    #[test]
     fn msa_small() {
         let mut eng = AlignmentEngine::new(AlignmentType::kNW, 5, -4, -3, -1, -3, -1);
         let mut graph = Graph::new();
@@ -217,6 +267,29 @@ mod tests {
             };
             let aln = eng.align(seq, &graph);
             graph.add_alignment(&aln, seq, &qual);
+        }
+
+        let msa = graph.multiple_sequence_alignment(true);
+        assert!(msa.len() == 7);
+        assert!(msa[0].as_bytes() == b"ATTGCC-CGTT");
+        assert!(msa[1].as_bytes() == b"AATG-C-CGTT");
+        assert!(msa[2].as_bytes() == b"AATGCC-CGAT");
+        assert!(msa[3].as_bytes() == b"AACGCC-CGTC");
+        assert!(msa[4].as_bytes() == b"AGTG-CTCGTT");
+        assert!(msa[5].as_bytes() == b"AATG-CTCGTT");
+        assert!(msa[6].as_bytes() == b"AATGCC-CGTT");
+    }
+
+    #[test]
+    fn msa_small_bytes() {
+        let mut eng = AlignmentEngine::new(AlignmentType::kNW, 5, -4, -3, -1, -3, -1);
+        let mut graph = Graph::new();
+
+        for seq in SMALL_SEQS_BYTES {
+            let qual = vec![34u8; seq.len()];
+
+            let aln = eng.align_from_bytes(seq, &graph);
+            graph.add_alignment_from_bytes(&aln, seq, &qual);
         }
 
         let msa = graph.multiple_sequence_alignment(true);
