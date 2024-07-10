@@ -1,5 +1,5 @@
 use spoa_sys::ffi;
-use std::ffi::{CStr, CString};
+use std::ffi::{c_char, CStr, CString};
 
 pub use ffi::AlignmentType;
 
@@ -24,6 +24,23 @@ impl AlignmentEngine {
             ffi::align(
                 self.0.pin_mut(),
                 sequence.as_ptr(),
+                sequence_len,
+                graph.0.as_ref().unwrap(),
+            )
+        })
+    }
+
+    /// Align a `sequence` to a `graph`, returning an `Alignment`, from a byte slice
+    /// of sequence and quality lengths.
+    pub fn align_from_bytes(&mut self, sequence: &[u8], graph: &Graph) -> Alignment {
+        let sequence_len: u32 = sequence
+            .len()
+            .try_into()
+            .expect("Sequence length does not fit into a u32");
+        Alignment(unsafe {
+            ffi::align(
+                self.0.pin_mut(),
+                sequence.as_ptr() as *const c_char,
                 sequence_len,
                 graph.0.as_ref().unwrap(),
             )
@@ -55,6 +72,40 @@ impl Graph {
                 sequence.as_ptr(),
                 sequence_len,
                 quality.as_ptr(),
+                quality_len,
+            )
+        }
+    }
+
+    /// Add an `Alignment` to a `Graph`, along with its `sequence` and per-base `quality` scores, from a byte slice of
+    /// sequence and quality lengths.
+    ///
+    /// The `alignment` should be derived from calling `AlignmentEngine::align` with the
+    /// `sequence`.
+    pub fn add_alignment_from_bytes(
+        &mut self,
+        alignment: &Alignment,
+        sequence: &[u8],
+        quality: &[u8],
+    ) {
+        let sequence_len = sequence
+            .len()
+            .try_into()
+            .expect("Sequence length does not fit into a u32");
+        let quality_len = quality
+            .len()
+            .try_into()
+            .expect("Quality length does not fit into a u32");
+
+        assert!(sequence_len == quality_len);
+
+        unsafe {
+            ffi::add_alignment(
+                self.0.pin_mut(),
+                alignment.0.as_ref().unwrap(),
+                sequence.as_ptr() as *const c_char,
+                sequence_len,
+                quality.as_ptr() as *const c_char,
                 quality_len,
             )
         }
