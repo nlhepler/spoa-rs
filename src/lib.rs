@@ -1,5 +1,4 @@
 use spoa_sys::ffi;
-use std::ffi::{CStr, CString};
 
 pub use ffi::AlignmentType;
 
@@ -18,12 +17,12 @@ impl AlignmentEngine {
     }
 
     /// Align a `sequence` to a `graph`, returning an `Alignment`
-    pub fn align(&mut self, sequence: &CStr, graph: &Graph) -> Alignment {
-        let sequence_len = u32::try_from(sequence.to_bytes().len()).unwrap();
+    pub fn align(&mut self, sequence: &[u8], graph: &Graph) -> Alignment {
+        let sequence_len = u32::try_from(sequence.len()).unwrap();
         Alignment(unsafe {
             ffi::align(
                 self.0.pin_mut(),
-                sequence.as_ptr(),
+                sequence.as_ptr() as *const i8,
                 sequence_len,
                 graph.0.as_ref().unwrap(),
             )
@@ -40,51 +39,74 @@ impl Graph {
         Graph(ffi::create_graph())
     }
 
-    /// Add an `Alignment` to a `Graph`, along with its `sequence` and per-base `quality` scores.
+    /// Add an `Alignment` to a `Graph`, along with its `sequence` and uniform `weight`.
     ///
     /// The `alignment` should be derived from calling `AlignmentEngine::align` with the
     /// `sequence`.
-    pub fn add_alignment(&mut self, alignment: &Alignment, sequence: &CStr, quality: &CStr) {
-        let sequence_len = u32::try_from(sequence.to_bytes().len()).unwrap();
-        let quality_len = u32::try_from(quality.to_bytes().len()).unwrap();
-        assert!(sequence_len == quality_len);
+    pub fn add_alignment(&mut self, alignment: &Alignment, sequence: &[u8], weight: u32) {
+        let sequence_len = u32::try_from(sequence.len()).unwrap();
         unsafe {
             ffi::add_alignment(
                 self.0.pin_mut(),
                 alignment.0.as_ref().unwrap(),
-                sequence.as_ptr(),
+                sequence.as_ptr() as *const i8,
                 sequence_len,
-                quality.as_ptr(),
+                weight,
+            )
+        }
+    }
+
+    /// Add an `Alignment` to a `Graph`, along with its `sequence` and per-base FASTQ `quality` scores.
+    ///
+    /// The `alignment` should be derived from calling `AlignmentEngine::align` with the
+    /// `sequence`.
+    pub fn add_alignment_with_qual(
+        &mut self,
+        alignment: &Alignment,
+        sequence: &[u8],
+        quality: &[u8],
+    ) {
+        let sequence_len = u32::try_from(sequence.len()).unwrap();
+        let quality_len = u32::try_from(quality.len()).unwrap();
+        assert!(sequence_len == quality_len);
+        unsafe {
+            ffi::add_alignment_with_qual(
+                self.0.pin_mut(),
+                alignment.0.as_ref().unwrap(),
+                sequence.as_ptr() as *const i8,
+                sequence_len,
+                quality.as_ptr() as *const i8,
                 quality_len,
             )
         }
     }
 
     /// Generate a consenus sequence from the partial order `Graph`.
-    pub fn consensus(&mut self) -> CString {
-        let mut buf = Vec::from(
+    pub fn consensus(&mut self) -> Vec<u8> {
+        Vec::from(
             ffi::generate_consensus(self.0.pin_mut())
                 .as_ref()
                 .unwrap()
                 .as_bytes(),
-        );
-        buf.push(0);
-        CString::from_vec_with_nul(buf).unwrap()
+        )
     }
 
     /// Generate a multiple sequence alignment for all sequences added to the `Graph`.
     ///
     /// If `include_consensus` is provided, the consensus sequence is provided, also aligned, at
     /// the end.
-    pub fn multiple_sequence_alignment(&mut self, include_consensus: bool) -> Vec<CString> {
+    pub fn multiple_sequence_alignment(&mut self, include_consensus: bool) -> Vec<Vec<u8>> {
         let msa = ffi::generate_multiple_sequence_alignment(self.0.pin_mut(), include_consensus);
         let mut result = vec![];
         for aln in msa.as_ref().unwrap().iter() {
-            let mut buf = Vec::from(aln.as_bytes());
-            buf.push(0);
-            result.push(CString::from_vec_with_nul(buf).unwrap());
+            result.push(Vec::from(aln.as_bytes()));
         }
         result
+    }
+
+    /// Clear the graph
+    pub fn clear(&mut self) {
+        ffi::graph_clear(self.0.pin_mut())
     }
 }
 
@@ -102,16 +124,14 @@ mod tests {
     use super::*;
 
     // thanks to pjedge for this small
-    const SMALL_SEQS: &[&CStr] = unsafe {
-        &[
-            CStr::from_bytes_with_nul_unchecked(b"ATTGCCCGTT\0"),
-            CStr::from_bytes_with_nul_unchecked(b"AATGCCGTT\0"),
-            CStr::from_bytes_with_nul_unchecked(b"AATGCCCGAT\0"),
-            CStr::from_bytes_with_nul_unchecked(b"AACGCCCGTC\0"),
-            CStr::from_bytes_with_nul_unchecked(b"AGTGCTCGTT\0"),
-            CStr::from_bytes_with_nul_unchecked(b"AATGCTCGTT\0"),
-        ]
-    };
+    const SMALL_SEQS: &[&[u8]] = &[
+        b"ATTGCCCGTT",
+        b"AATGCCGTT",
+        b"AATGCCCGAT",
+        b"AACGCCCGTC",
+        b"AGTGCTCGTT",
+        b"AATGCTCGTT",
+    ];
 
     #[test]
     fn consensus_small() {
@@ -119,17 +139,12 @@ mod tests {
         let mut graph = Graph::new();
 
         for seq in SMALL_SEQS {
-            let qual = {
-                let mut qual = vec![34u8; seq.to_bytes().len()];
-                qual.push(0);
-                CString::from_vec_with_nul(qual).unwrap()
-            };
             let aln = eng.align(seq, &graph);
-            graph.add_alignment(&aln, seq, &qual);
+            graph.add_alignment(&aln, seq, 1);
         }
 
         let consensus = graph.consensus();
-        assert!(consensus.as_bytes() == b"AATGCCCGTT");
+        assert!(consensus.as_slice() == b"AATGCCCGTT");
     }
 
     #[test]
@@ -144,13 +159,13 @@ mod tests {
 
         for record in reader {
             let record = record.unwrap();
-            let aln = eng.align(&record.seq, &graph);
-            graph.add_alignment(&aln, &record.seq, &record.qual);
+            let aln = eng.align(record.seq.as_bytes(), &graph);
+            graph.add_alignment_with_qual(&aln, record.seq.as_bytes(), record.qual.as_bytes());
         }
 
         let consensus = graph.consensus();
         let expected = b"AATGATGCGCTTTGTTGGCGCGGTGGCTTGATGCAGGGGCTAATCGACCTCTGGCAACCACTTTTCCATGACAGGAGTTGAATATGGCATTCAGTAATCCCTTCGATGATCCGCAGGGAGCGTTTTACATATTGCGCAATGCGCAGGGGCAATTCAGTCTGTGGCCGCAACAATGCGTCTTACCGGCAGGCTGGGACATTGTGTGTCAGCCGCAGTCACAGGCGTCCTGCCAGCAGTGGCTGGAAGCCCACTGGCGTACTCTGACACCGACGAATTTTACCCAGTTGCAGGAGGCACAATGAGCCAGCATTTACCTTTGGTCGCCGCACAGCCCGGCATCTGGATGGCAGAAAAACTGTCAGAATTACCCTCCGCCTGGAGCGTGGCGCATTACGTTGAGTTAACCGGAGAGGTTGATTCGCCATTACTGGCCCGCGCGGTGGTTGCCGGACTAGCGCAAGCAGATACGCTTTACACGCGCAACCAAGGATTTCGG";
-        assert!(consensus.as_bytes() == expected);
+        assert!(consensus.as_slice() == expected);
     }
 
     #[test]
@@ -159,23 +174,35 @@ mod tests {
         let mut graph = Graph::new();
 
         for seq in SMALL_SEQS {
-            let qual = {
-                let mut qual = vec![34u8; seq.to_bytes().len()];
-                qual.push(0);
-                CString::from_vec_with_nul(qual).unwrap()
-            };
             let aln = eng.align(seq, &graph);
-            graph.add_alignment(&aln, seq, &qual);
+            graph.add_alignment(&aln, seq, 1);
         }
 
         let msa = graph.multiple_sequence_alignment(true);
         assert!(msa.len() == 7);
-        assert!(msa[0].as_bytes() == b"ATTGCC-CGTT");
-        assert!(msa[1].as_bytes() == b"AATG-C-CGTT");
-        assert!(msa[2].as_bytes() == b"AATGCC-CGAT");
-        assert!(msa[3].as_bytes() == b"AACGCC-CGTC");
-        assert!(msa[4].as_bytes() == b"AGTG-CTCGTT");
-        assert!(msa[5].as_bytes() == b"AATG-CTCGTT");
-        assert!(msa[6].as_bytes() == b"AATGCC-CGTT");
+        assert!(msa[0].as_slice() == b"ATTGCC-CGTT");
+        assert!(msa[1].as_slice() == b"AATG-C-CGTT");
+        assert!(msa[2].as_slice() == b"AATGCC-CGAT");
+        assert!(msa[3].as_slice() == b"AACGCC-CGTC");
+        assert!(msa[4].as_slice() == b"AGTG-CTCGTT");
+        assert!(msa[5].as_slice() == b"AATG-CTCGTT");
+        assert!(msa[6].as_slice() == b"AATGCC-CGTT");
+
+        graph.clear();
+
+        for seq in SMALL_SEQS.iter().rev() {
+            let aln = eng.align(seq, &graph);
+            graph.add_alignment(&aln, seq, 1);
+        }
+
+        let msa = graph.multiple_sequence_alignment(true);
+        assert!(msa.len() == 7);
+        assert!(msa[0].as_slice() == b"AATGCTCGTT");
+        assert!(msa[1].as_slice() == b"AGTGCTCGTT");
+        assert!(msa[2].as_slice() == b"AACGCCCGTC");
+        assert!(msa[3].as_slice() == b"AATGCCCGAT");
+        assert!(msa[4].as_slice() == b"AATGC-CGTT");
+        assert!(msa[5].as_slice() == b"ATTGCCCGTT");
+        assert!(msa[6].as_slice() == b"AATGCCCGTT");
     }
 }

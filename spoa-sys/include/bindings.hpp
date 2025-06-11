@@ -20,13 +20,20 @@ std::unique_ptr<spoa::Alignment> align(spoa::AlignmentEngine &engine,
 
 std::unique_ptr<spoa::Graph> create_graph();
 
+void add_alignment_with_qual(spoa::Graph &graph,
+                             const spoa::Alignment &alignment,
+                             const char *sequence, std::uint32_t sequence_len,
+                             const char *quality, std::uint32_t quality_len);
+
 void add_alignment(spoa::Graph &graph, const spoa::Alignment &alignment,
                    const char *sequence, std::uint32_t sequence_len,
-                   const char *quality, std::uint32_t quality_len);
+                   std::uint32_t weight);
+
+void graph_clear(spoa::Graph &graph);
 
 std::unique_ptr<std::string> generate_consensus(spoa::Graph &graph);
 
-std::unique_ptr<std::vector<std::string> >
+std::unique_ptr<std::vector<std::string>>
 generate_multiple_sequence_alignment(spoa::Graph &graph,
                                      bool include_consensus);
 

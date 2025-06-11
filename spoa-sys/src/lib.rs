@@ -22,7 +22,7 @@ pub mod ffi {
         fn create_graph() -> UniquePtr<Graph>;
         /// # Safety
         /// this function is unsafe because cxx says pointer arguments are unsafe
-        unsafe fn add_alignment(
+        unsafe fn add_alignment_with_qual(
             graph: Pin<&mut Graph>,
             alignment: &Alignment,
             sequence: *const c_char,
@@ -30,11 +30,19 @@ pub mod ffi {
             quality: *const c_char,
             quality_len: u32,
         );
+        unsafe fn add_alignment(
+            graph: Pin<&mut Graph>,
+            alignment: &Alignment,
+            sequence: *const c_char,
+            sequence_len: u32,
+            weight: u32,
+        );
         fn generate_consensus(graph: Pin<&mut Graph>) -> UniquePtr<CxxString>;
         fn generate_multiple_sequence_alignment(
             graph: Pin<&mut Graph>,
             include_consensus: bool,
         ) -> UniquePtr<CxxVector<CxxString>>;
+        fn graph_clear(graph: Pin<&mut Graph>);
 
         fn create_alignment_engine(
             typ: AlignmentType,

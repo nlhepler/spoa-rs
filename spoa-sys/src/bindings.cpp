@@ -22,11 +22,19 @@ std::unique_ptr<Graph> create_graph() {
   return std::unique_ptr<Graph>(new Graph());
 }
 
-void add_alignment(Graph &graph, const Alignment &alignment,
-                   const char *sequence, std::uint32_t sequence_len,
-                   const char *quality, std::uint32_t quality_len) {
+void add_alignment_with_qual(Graph &graph, const Alignment &alignment,
+                             const char *sequence, std::uint32_t sequence_len,
+                             const char *quality, std::uint32_t quality_len) {
   graph.AddAlignment(alignment, sequence, sequence_len, quality, quality_len);
 }
+
+void add_alignment(Graph &graph, const Alignment &alignment,
+                   const char *sequence, std::uint32_t sequence_len,
+                   std::uint32_t weight) {
+  graph.AddAlignment(alignment, sequence, sequence_len, weight);
+}
+
+void graph_clear(Graph &graph) { graph.Clear(); }
 
 std::unique_ptr<std::string> generate_consensus(Graph &graph) {
   std::string consensus = graph.GenerateConsensus();
