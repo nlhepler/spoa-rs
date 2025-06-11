@@ -38,6 +38,10 @@ pub mod ffi {
             weight: u32,
         );
         fn generate_consensus(graph: Pin<&mut Graph>) -> UniquePtr<CxxString>;
+        fn generate_consensus_with_min_coverage(
+            graph: Pin<&mut Graph>,
+            min_coverage: i32,
+        ) -> UniquePtr<CxxString>;
         fn generate_multiple_sequence_alignment(
             graph: Pin<&mut Graph>,
             include_consensus: bool,

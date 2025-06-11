@@ -91,6 +91,16 @@ impl Graph {
         )
     }
 
+    /// Generate a consensus sequence with `min_coverage` from the partial order `Graph`.
+    pub fn consensus_with_min_coverage(&mut self, min_coverage: i32) -> Vec<u8> {
+        Vec::from(
+            ffi::generate_consensus_with_min_coverage(self.0.pin_mut(), min_coverage)
+                .as_ref()
+                .unwrap()
+                .as_bytes(),
+        )
+    }
+
     /// Generate a multiple sequence alignment for all sequences added to the `Graph`.
     ///
     /// If `include_consensus` is provided, the consensus sequence is provided, also aligned, at

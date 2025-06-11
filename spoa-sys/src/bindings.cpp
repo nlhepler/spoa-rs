@@ -41,6 +41,12 @@ std::unique_ptr<std::string> generate_consensus(Graph &graph) {
   return std::unique_ptr<std::string>(new std::string(std::move(consensus)));
 }
 
+std::unique_ptr<std::string>
+generate_consensus_with_min_coverage(Graph &graph, std::int32_t min_coverage) {
+  std::string consensus = graph.GenerateConsensus(min_coverage);
+  return std::unique_ptr<std::string>(new std::string(std::move(consensus)));
+}
+
 std::unique_ptr<std::vector<std::string>>
 generate_multiple_sequence_alignment(Graph &graph, bool include_consensus) {
   std::vector<std::string> msa =

@@ -33,6 +33,10 @@ void graph_clear(spoa::Graph &graph);
 
 std::unique_ptr<std::string> generate_consensus(spoa::Graph &graph);
 
+std::unique_ptr<std::string>
+generate_consensus_with_min_coverage(spoa::Graph &graph,
+                                     std::int32_t min_coverage);
+
 std::unique_ptr<std::vector<std::string>>
 generate_multiple_sequence_alignment(spoa::Graph &graph,
                                      bool include_consensus);

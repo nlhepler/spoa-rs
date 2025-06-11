@@ -2,6 +2,7 @@ use std::ffi::CString;
 use std::io::{BufRead, Result};
 
 pub struct FastqRecord {
+    #[allow(dead_code)]
     pub name: CString,
     pub seq: CString,
     pub qual: CString,
